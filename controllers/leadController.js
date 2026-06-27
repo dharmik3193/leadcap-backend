@@ -11,16 +11,23 @@ exports.getAllLeads = async (req, res) => {
         `);
 
         res.json({
+
             success: true,
+
             total: rows.length,
+
             data: rows
+
         });
 
-    } catch (error) {
+    } catch (err) {
 
         res.status(500).json({
+
             success: false,
-            message: error.message
+
+            message: err.message
+
         });
 
     }

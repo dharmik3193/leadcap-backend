@@ -5,7 +5,7 @@ const router = express.Router();
 const {
     verifyWebhook,
     receiveWebhook
-} = require("../webhook/facebookWebhook");
+} = require("../controllers/webhookController");
 
 router.get("/", verifyWebhook);
 
