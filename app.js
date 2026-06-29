@@ -28,10 +28,8 @@ async function initDb() {
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 lead_id VARCHAR(100) UNIQUE,
                 form_id VARCHAR(100),
+                form_fields JSON,
                 created_time VARCHAR(50),
-                full_name VARCHAR(255),
-                email VARCHAR(255),
-                phone_number VARCHAR(50),
                 received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
