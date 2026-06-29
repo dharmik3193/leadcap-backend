@@ -44,6 +44,40 @@ async function initDb() {
 }
 initDb();
 
+// Helper function to query Meta API and save to SQL
+// HELPER FUNCTION: Completely Dynamic Meta API Fetcher
+async function fetchAndSaveLead(leadId, formId, createdTime) {
+    try {
+        const url = `https://graph.facebook.com/v19.0/${leadId}?access_token=${process.env.META_PAGE_ACCESS_TOKEN}`;
+        const response = await axios.get(url);
+        const fieldData = response.data.field_data;
+
+        // Dynamic Key-Value Map to store ANY custom form field
+        let dynamicFields = {};
+
+        if (fieldData) {
+            fieldData.forEach(field => {
+                // Example: field.name = "what_is_your_preferred_time", field.values[0] = "Evening"
+                dynamicFields[field.name] = field.values[0];
+            });
+        }
+
+        // Convert the object into a JSON string for MySQL storage
+        const fieldsJsonString = JSON.stringify(dynamicFields);
+
+        // SQL updates: Inserts or updates the JSON payload dynamically
+        const sql = `INSERT INTO leads (lead_id, form_id, form_fields, created_time) 
+                     VALUES (?, ?, ?, ?) 
+                     ON DUPLICATE KEY UPDATE form_fields = VALUES(form_fields)`;
+        
+        await db.query(sql, [leadId, formId, fieldsJsonString, createdTime]);
+        console.log(`Successfully saved dynamic lead ${leadId} to the database.`);
+
+    } catch (error) {
+        console.error(`Error processing lead ${leadId}:`, error.response ? error.response.data : error.message);
+    }
+}
+
 // 1. META WEBHOOK VERIFICATION (GET Request)
 // Meta calls this once when you set up the webhook to verify you own the URL
 app.get('/api/webhook', (req, res) => {
@@ -91,42 +125,7 @@ app.post('/api/webhook', (req, res) => {
     }
 });
 
-// Helper function to query Meta API and save to SQL
-async function fetchAndSaveLead(leadId, formId, createdTime) {
-    try {
-        const url = `https://graph.facebook.com/v19.0/${leadId}?access_token=${process.env.META_PAGE_ACCESS_TOKEN}`;
-        const response = await axios.get(url);
-        const fieldData = response.data.field_data;
 
-        // Parse fields dynamically depending on your form setup
-        let fullName = '';
-        let email = '';
-        let phoneNumber = '';
-
-        if (fieldData) {
-            fieldData.forEach(field => {
-                if (field.name === 'full_name' || field.name === 'name') {
-                    fullName = field.values[0];
-                } else if (field.name === 'email') {
-                    email = field.values[0];
-                } else if (field.name === 'phone_number' || field.name === 'phone') {
-                    phoneNumber = field.values[0];
-                }
-            });
-        }
-
-        // Save into SQL Database
-        const sql = `INSERT INTO leads (lead_id, form_id, created_time, full_name, email, phone_number) 
-                     VALUES (?, ?, ?, ?, ?, ?) 
-                     ON DUPLICATE KEY UPDATE lead_id=lead_id`;
-        
-        await db.query(sql, [leadId, formId, createdTime, fullName, email, phoneNumber]);
-        console.log(`Successfully saved lead ${leadId} to the database.`);
-
-    } catch (error) {
-        console.error(`Error processing lead ${leadId}:`, error.response ? error.response.data : error.message);
-    }
-}
 
 // 3. FRONTEND API ENDPOINT (GET Request)
 // Use this endpoint to view/display leads on your custom frontend website
