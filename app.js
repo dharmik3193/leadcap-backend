@@ -166,6 +166,43 @@ app.post('/api/update-status', async (req, res) => {
         await connection.query('UPDATE leads SET status = ? WHERE lead_id = ?', [status, lead_id]);
         connection.release();
 
+
+        let metaCustomStage = status; 
+        
+        // फेसबुक CAPI के लिए पेलोड तैयार करें
+        const metaCapiPayload = {
+            data: [
+                {
+                    event_name: "Lead", // फेसबुक लीड इवेंट ट्रैकिंग
+                    event_time: Math.floor(Date.now() / 1000),
+                    action_source: "system_generated",
+                    user_data: {
+                        // लीड आईडी भेजना सबसे जरूरी है ताकि फेसबुक मैच कर सके
+                        lead_id: lead_id 
+                    },
+                    custom_data: {
+                        lead_status: metaCustomStage, // 'Interested', 'Closed / Won' आदि
+                        crm_status: status
+                    }
+                }
+            ]
+        };
+
+        // आपके उसी Permanent System User Token का इस्तेमाल करके फेसबुक को डेटा पोस्ट करना
+        const pixelId = process.env.META_PIXEL_ID; // आपके फेसबुक पिक्सेल या डेटासेट की ID
+        const metaToken = process.env.META_PAGE_ACCESS_TOKEN;
+
+        if (pixelId && metaToken) {
+            await axios.post(
+                `https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${metaToken}`,
+                metaCapiPayload
+            ).then(() => {
+                console.log(`Meta CAPI: Successfully synced status '${status}' for lead ${lead_id}`);
+            }).catch(metaErr => {
+                console.error("Meta CAPI Sync Error Details:", metaErr.response ? metaErr.response.data : metaErr.message);
+            });
+        }
+
         return res.status(200).json({ success: true, message: "Status updated successfully" });
     } catch (error) {
         if (connection) connection.release();
