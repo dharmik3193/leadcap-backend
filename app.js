@@ -127,12 +127,38 @@ async function fetchAndSaveLead(leadId, formId, createdTime) {
 
 // 3. FRONTEND API ENDPOINT (GET Request)
 // Use this endpoint to view/display leads on your custom frontend website
+// REPLACE your current app.get('/api/leads') with this:
 app.get('/api/leads', async (req, res) => {
+    let connection;
     try {
-        const [rows] = await db.query('SELECT * FROM leads ORDER BY received_at DESC');
-        res.json({ success: true, data: rows });
+        // 1. Get a dedicated connection from the pool to prevent timeouts
+        connection = await db.getConnection();
+        
+        // 2. Run the query
+        const [rows] = await connection.query('SELECT * FROM leads ORDER BY received_at DESC');
+        
+        // 3. Explicitly release the connection back to the pool immediately
+        connection.release();
+
+        // 4. Return the data cleanly
+        return res.status(200).json({ 
+            success: true, 
+            count: rows.length,
+            data: rows 
+        });
+
     } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        // If a connection was opened, make sure we release it even on failure
+        if (connection) connection.release();
+
+        console.error("Error fetching leads from database:", error.message);
+        
+        // This will print the EXACT database error to your screen instead of a generic 500
+        return res.status(500).json({ 
+            success: false, 
+            error: error.message,
+            stack: error.stack 
+        });
     }
 });
 
