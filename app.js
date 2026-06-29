@@ -152,6 +152,27 @@ app.get('/api/leads', async (req, res) => {
     }
 });
 
+// 🌟 NEW: Update Lead Status Endpoint
+app.post('/api/update-status', async (req, res) => {
+    const { lead_id, status } = req.body;
+    
+    if (!lead_id || !status) {
+        return res.status(400).json({ success: false, error: "Missing lead_id or status" });
+    }
+
+    let connection;
+    try {
+        connection = await db.getConnection();
+        await connection.query('UPDATE leads SET status = ? WHERE lead_id = ?', [status, lead_id]);
+        connection.release();
+
+        return res.status(200).json({ success: true, message: "Status updated successfully" });
+    } catch (error) {
+        if (connection) connection.release();
+        return res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
