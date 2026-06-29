@@ -131,11 +131,11 @@ async function fetchAndSaveLead(leadId, formId, createdTime) {
 // 3. FRONTEND API ENDPOINT (GET Request)
 // Use this endpoint to view/display leads on your custom frontend website
 // REPLACE your current app.get('/api/leads') with this:
-app.get(['/api/leads', '*/api/leads'], async (req, res) => {
+app.get('/api/leads', async (req, res) => {
     let connection;
     try {
         connection = await db.getConnection();
-        const [rows] = await connection.query('SELECT * FROM leads ORDER BY received_at DESC');
+        const [rows] = await connection.query('SELECT * FROM leads ORDER BY received_at');
         connection.release();
 
         return res.status(200).json({ 
