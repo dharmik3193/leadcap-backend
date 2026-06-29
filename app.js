@@ -58,29 +58,31 @@ app.get('/api/webhook', (req, res) => {
 
 // 2. META WEBHOOK RECEIVER (POST Request)
 // Meta sends real-time lead alerts here
-app.post('/api/webhook', async (req, res) => {
+// REPLACE your current app.post('/api/webhook') block with this safer version:
+app.post('/api/webhook', (req, res) => {
     const body = req.body;
 
-    // Acknowledge receipt to Meta immediately (Meta requires a quick 200 OK response)
+    // 1. Tell Meta IMMEDIATELY that we got it (Fixes webhooks.delivery.rejected)
     res.status(200).send('EVENT_RECEIVED');
 
+    // 2. Process the lead data asynchronously in the background
     if (body.object === 'page') {
-        for (const entry of body.entry) {
-            if (!entry.changes) continue;
+        body.entry.forEach(entry => {
+            if (entry.changes) {
+                entry.changes.forEach(async (change) => {
+                    if (change.field === 'leadgen') {
+                        const leadId = change.value.leadgen_id;
+                        const formId = change.value.form_id;
+                        const createdTime = change.value.created_time;
 
-            for (const change of entry.changes) {
-                if (change.field === 'leadgen') {
-                    const leadId = change.value.leadgen_id;
-                    const formId = change.value.form_id;
-                    const createdTime = change.value.created_time;
-
-                    console.log(`New lead notification received. Lead ID: ${leadId}`);
-                    
-                    // Fetch the detailed lead data from Meta Graph API
-                    await fetchAndSaveLead(leadId, formId, createdTime);
-                }
+                        console.log(`Processing Lead ID asynchronously: ${leadId}`);
+                        await fetchAndSaveLead(leadId, formId, createdTime).catch(err => {
+                            console.error("Background processing error:", err.message);
+                        });
+                    }
+                });
             }
-        }
+        });
     }
 });
 
