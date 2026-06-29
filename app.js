@@ -1,100 +1,139 @@
-// server.js
-const express = require('express');
-const cors = require('cors');
-const bodyParser = require('body-parser');
 require('dotenv').config();
-
-const { initializeDatabase } = require('./config/db');
-const leadsRouter = require('./routes/leads');
+const express = require('express');
+const mysql = require('mysql2/promise');
+const axios = require('axios');
 
 const app = express();
+app.use(express.json());
+
+// Database Connection Pool
+const db = mysql.createPool({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
+});
+
+// Initialize Database Table
+async function initDb() {
+    try {
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS leads (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                lead_id VARCHAR(100) UNIQUE,
+                form_id VARCHAR(100),
+                created_time VARCHAR(50),
+                full_name VARCHAR(255),
+                email VARCHAR(255),
+                phone_number VARCHAR(50),
+                received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        console.log("Database table 'leads' is ready.");
+    } catch (error) {
+        console.error("Database initialization failed:", error);
+    }
+}
+initDb();
+
+// 1. META WEBHOOK VERIFICATION (GET Request)
+// Meta calls this once when you set up the webhook to verify you own the URL
+app.get('/api/webhook', (req, res) => {
+    const mode = req.query['hub.mode'];
+    const token = req.query['hub.verify_token'];
+    const challenge = req.query['hub.challenge'];
+
+    if (mode && token) {
+        if (mode === 'subscribe' && token === process.env.META_VERIFY_TOKEN) {
+            console.log('Webhook verified successfully!');
+            return res.status(200).send(challenge);
+        } else {
+            return res.sendStatus(403);
+        }
+    }
+});
+
+// 2. META WEBHOOK RECEIVER (POST Request)
+// Meta sends real-time lead alerts here
+app.post('/api/webhook', async (req, res) => {
+    const body = req.body;
+
+    // Acknowledge receipt to Meta immediately (Meta requires a quick 200 OK response)
+    res.status(200).send('EVENT_RECEIVED');
+
+    if (body.object === 'page') {
+        for (const entry of body.entry) {
+            if (!entry.changes) continue;
+
+            for (const change of entry.changes) {
+                if (change.field === 'leadgen') {
+                    const leadId = change.value.leadgen_id;
+                    const formId = change.value.form_id;
+                    const createdTime = change.value.created_time;
+
+                    console.log(`New lead notification received. Lead ID: ${leadId}`);
+                    
+                    // Fetch the detailed lead data from Meta Graph API
+                    await fetchAndSaveLead(leadId, formId, createdTime);
+                }
+            }
+        }
+    }
+});
+
+// Helper function to query Meta API and save to SQL
+async function fetchAndSaveLead(leadId, formId, createdTime) {
+    try {
+        const url = `https://graph.facebook.com/v19.0/${leadId}?access_token=${process.env.META_PAGE_ACCESS_TOKEN}`;
+        const response = await axios.get(url);
+        const fieldData = response.data.field_data;
+
+        // Parse fields dynamically depending on your form setup
+        let fullName = '';
+        let email = '';
+        let phoneNumber = '';
+
+        if (fieldData) {
+            fieldData.forEach(field => {
+                if (field.name === 'full_name' || field.name === 'name') {
+                    fullName = field.values[0];
+                } else if (field.name === 'email') {
+                    email = field.values[0];
+                } else if (field.name === 'phone_number' || field.name === 'phone') {
+                    phoneNumber = field.values[0];
+                }
+            });
+        }
+
+        // Save into SQL Database
+        const sql = `INSERT INTO leads (lead_id, form_id, created_time, full_name, email, phone_number) 
+                     VALUES (?, ?, ?, ?, ?, ?) 
+                     ON DUPLICATE KEY UPDATE lead_id=lead_id`;
+        
+        await db.query(sql, [leadId, formId, createdTime, fullName, email, phoneNumber]);
+        console.log(`Successfully saved lead ${leadId} to the database.`);
+
+    } catch (error) {
+        console.error(`Error processing lead ${leadId}:`, error.response ? error.response.data : error.message);
+    }
+}
+
+// 3. FRONTEND API ENDPOINT (GET Request)
+// Use this endpoint to view/display leads on your custom frontend website
+app.get('/api/leads', async (req, res) => {
+    try {
+        const [rows] = await db.query('SELECT * FROM leads ORDER BY received_at DESC');
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Start server
 const PORT = process.env.PORT || 3000;
-
-// Middleware
-app.use(cors());
-app.use(bodyParser.json({ limit: '10mb' }));
-app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
-
-// Request logging middleware
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  next();
+app.listen(PORT, () => {
+    console.log(`Backend server running on port ${PORT}`);
 });
-
-// Routes
-app.use('/api/leads', leadsRouter);
-app.use('/webhook', leadsRouter);
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-  });
-});
-
-// Home endpoint
-app.get('/', (req, res) => {
-  res.json({
-    message: 'Meta Leads Backend Server',
-    status: 'Running',
-    endpoints: {
-      health: 'GET /health',
-      leads: 'GET /api/leads',
-      webhook: 'POST /webhook/leads',
-    },
-  });
-});
-
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({
-    error: 'Not Found',
-    path: req.path,
-    method: req.method,
-  });
-});
-
-// Error handler
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(500).json({
-    error: 'Internal Server Error',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong',
-  });
-});
-
-// Initialize database and start server
-const startServer = async () => {
-  try {
-    await initializeDatabase();
-    
-    app.listen(PORT, () => {
-      console.log(`\n╔════════════════════════════════════════╗`);
-      console.log(`║  Meta Leads Backend Server Started    ║`);
-      console.log(`║  Port: ${PORT}${' '.repeat(28 - PORT.toString().length)}║`);
-      console.log(`║  URL: http://localhost:${PORT}${' '.repeat(26 - PORT.toString().length)}║`);
-      console.log(`║  Environment: ${process.env.NODE_ENV || 'development'}${' '.repeat(19 - (process.env.NODE_ENV || 'development').length)}║`);
-      console.log(`╚════════════════════════════════════════╝\n`);
-    });
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
-  }
-};
-
-// Handle graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('\nSIGTERM signal received: closing HTTP server');
-  process.exit(0);
-});
-
-process.on('SIGINT', () => {
-  console.log('\nSIGINT signal received: closing HTTP server');
-  process.exit(0);
-});
-
-startServer();
-
-module.exports = app;
