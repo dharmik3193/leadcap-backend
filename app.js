@@ -135,7 +135,7 @@ app.get('/api/leads', async (req, res) => {
     let connection;
     try {
         connection = await db.getConnection();
-        const [rows] = await connection.query('SELECT * FROM leads ORDER BY received_at');
+        const [rows] = await connection.query('SELECT * FROM leads ORDER BY id DESC');
         connection.release();
 
         return res.status(200).json({ 
