@@ -67,7 +67,7 @@ async function fetchAndSaveLead(leadId, formId, createdTime) {
         const sql = `INSERT INTO leads (lead_id, form_id, form_fields, created_time) 
                      VALUES (?, ?, ?, ?) 
                      ON DUPLICATE KEY UPDATE form_fields = VALUES(form_fields)`;
-        
+
         await db.query(sql, [leadId, formId, fieldsJsonString, createdTime]);
         console.log(`Successfully saved dynamic lead ${leadId} to the database.`);
 
@@ -135,10 +135,16 @@ app.get('/api/leads', async (req, res) => {
         const [rows] = await connection.query('SELECT * FROM leads ORDER BY id DESC');
         connection.release();
 
-        return res.status(200).json({ 
-            success: true, 
-            count: rows.length,
-            data: rows 
+        const formattedRows = rows.map(row => ({
+            ...row,
+            // अगर डेटाबेस JSON को स्ट्रिंग बनाकर दे रहा है, तो उसे यहीं ठीक कर लें
+            form_fields: typeof row.form_fields === 'string' ? JSON.parse(row.form_fields) : row.form_fields
+        }));
+
+        return res.status(200).json({
+            success: true,
+            count: formattedRows.length,
+            data: formattedRows
         });
     } catch (error) {
         if (connection) connection.release();
