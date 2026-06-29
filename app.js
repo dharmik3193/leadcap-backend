@@ -20,6 +20,7 @@ const db = mysql.createPool({
 });
 
 // Initialize Database Table
+// Ensure database initialization errors don't kill the entire Node process
 async function initDb() {
     try {
         await db.query(`
@@ -36,7 +37,9 @@ async function initDb() {
         `);
         console.log("Database table 'leads' is ready.");
     } catch (error) {
-        console.error("Database initialization failed:", error);
+        // CRITICAL: Log the error but DO NOT let the app crash. 
+        // This keeps Express alive to handle HTTP requests.
+        console.error("Database connection failed on startup, but server will stay alive:", error.message);
     }
 }
 initDb();
