@@ -2,9 +2,11 @@ require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2/promise');
 const axios = require('axios');
+const cors = require('cors');
 
 const app = express();
 app.use(express.json());
+app.use(cors());
 
 // Database Connection Pool
 const db = mysql.createPool({
