@@ -90,6 +90,7 @@ exports.receiveMetaLead = async (req, res) => {
                             VALUES (?, ?, ?, ?, ?, ?, ?)
                             ON DUPLICATE KEY UPDATE form_name=VALUES(form_name), custom_fields_json=VALUES(custom_fields_json);
                         `;
+                        console.log(formName);
                         
                         await db.query(insertQuery, [
                             companyId, 
