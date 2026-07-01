@@ -46,17 +46,14 @@ exports.receiveMetaLead = async (req, res) => {
                         // 1. Fetch Company's Access Token
                         const [config] = await db.query('SELECT page_access_token FROM meta_configs WHERE company_id = ?', [companyId]);
                         if (config.length === 0) continue;
-                        console.log(config);
                         
                         const pageAccessToken = config[0].page_access_token;
 
-                        // 2. Fetch Form Name from Meta API paraleloneously
+                        // 2. Fetch Form Name from Meta API
                         let formName = 'Unknown Form';
                         try {
                             const formRes = await fetch(`https://graph.facebook.com/v18.0/${formId}?fields=name&access_token=${pageAccessToken}`);
                             const formData = await formRes.json();
-                            console.log(formData);
-                            
                             if (formData.name) formName = formData.name;
                         } catch (e) { console.error("Error fetching Form Name:", e); }
 
@@ -65,13 +62,16 @@ exports.receiveMetaLead = async (req, res) => {
                         const response = await fetch(graphApiUrl);
                         const metaLeadDetails = await response.json();
 
-                        if (metaLeadDetails.error) continue;
+                        if (metaLeadDetails.error) {
+                            console.error("Meta API details fetch error:", metaLeadDetails.error);
+                            continue;
+                        }
 
                         // 4. Extract Default and Custom Fields
                         let name = 'Meta Lead';
                         let email = '';
                         let phone = '';
-                        let customFields = {}; // K-V pairs map karne ke liye
+                        let customFields = {};
 
                         if (metaLeadDetails.field_data) {
                             metaLeadDetails.field_data.forEach(field => {
@@ -82,32 +82,35 @@ exports.receiveMetaLead = async (req, res) => {
                                 else if (fieldName === 'email') email = fieldValue;
                                 else if (fieldName === 'phone_number' || fieldName === 'phone') phone = fieldValue;
                                 else {
-                                    // Baki saare dynamic questions custom fields json object me jayenge
                                     customFields[fieldName] = fieldValue;
                                 }
                             });
                         }
 
-                        // 5. Save/Sync into DB with Form Name & JSON payload
+                        // 5. Save/Sync into DB - Dynamic query safely structured without tracking trailing semicolon
+                        const customFieldsString = JSON.stringify(customFields);
                         const insertQuery = `
                             INSERT INTO meta_leads (company_id, form_name, lead_name, lead_email, lead_phone, custom_fields_json, meta_lead_id)
                             VALUES (?, ?, ?, ?, ?, ?, ?)
-                            ON DUPLICATE KEY UPDATE form_name=VALUES(form_name), custom_fields_json=VALUES(custom_fields_json);
+                            ON DUPLICATE KEY UPDATE 
+                                form_name = VALUES(form_name), 
+                                lead_name = VALUES(lead_name),
+                                lead_email = VALUES(lead_email),
+                                lead_phone = VALUES(lead_phone),
+                                custom_fields_json = VALUES(custom_fields_json)
                         `;
-                        console.log(formName);
-                        console.log(insertQuery);
                         
-                        
-                        await db.query(insertQuery, [
+                        const [result] = await db.query(insertQuery, [
                             companyId, 
                             formName, 
                             name, 
                             email, 
                             phone, 
-                            JSON.stringify(customFields), 
+                            customFieldsString, 
                             metaLeadId
                         ]);
-                        console.log(`=> Lead Synced with custom data for Form [${formName}]`);
+
+                        console.log(`=> DB Operation Finished. Affected Rows: ${result.affectedRows} | Lead ID: ${metaLeadId}`);
                     }
                 }
             }
