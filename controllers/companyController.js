@@ -38,7 +38,7 @@ exports.getMetricsSummary = async (req, res) => {
         // Run multiple counts parallelly for better performance
         const [companyCountRows] = await db.query('SELECT COUNT(*) AS total FROM companies');
         const [leadCountRows] = await db.query('SELECT COUNT(*) AS total FROM meta_leads');
-        
+
         // Fetch last 5 onboarded companies for the dashboard preview table
         const queryRecent = `
             SELECT c.id, c.company_name, c.created_at,
@@ -120,7 +120,7 @@ exports.createCompany = async (req, res) => {
 // Manager creates employees
 exports.createEmployee = async (req, res) => {
     const { name, email, password } = req.body;
-    const companyId = req.user.company_id; 
+    const companyId = req.user.company_id;
     try {
         const passwordHash = await bcrypt.hash(password, 10);
         await db.query(
@@ -137,7 +137,7 @@ exports.getMetaConfig = async (req, res) => {
     // Agar login karne wala admin hai toh query params se companyId aayegi, agar manager hai toh uske session/JWT se aayegi
     const companyId = req.user.role === 'admin' ? req.query.companyId : req.user.company_id;
     console.log(req.query);
-    
+
 
     if (!companyId) return res.status(400).json({ message: 'Company ID missing' });
 
@@ -189,13 +189,13 @@ exports.getManagerDashboardData = async (req, res) => {
     try {
         // 1. Fetch all users belonging to this specific company having role 'employee'
         const [employees] = await db.query(
-            "SELECT id, name, email, role,status, created_at FROM users WHERE company_id = ? AND role = 'employee'", 
+            "SELECT id, name, email, role,status, created_at FROM users WHERE company_id = ? AND role = 'employee'",
             [companyId]
         );
 
         // 2. Fetch aggregate sum of incoming target leads allocated to this tenant
         const [leadCountRows] = await db.query(
-            "SELECT COUNT(*) AS total FROM meta_leads WHERE company_id = ?", 
+            "SELECT COUNT(*) AS total FROM meta_leads WHERE company_id = ?",
             [companyId]
         );
 
@@ -229,7 +229,7 @@ exports.toggleCompanyStatus = async (req, res) => {
 exports.toggleEmployeeStatus = async (req, res) => {
     const { employeeId, status } = req.body;
     const companyId = req.user.company_id; // Manager's company environment isolation
-    
+
     try {
         // Enforce boundary logic security wrapper
         await db.query('UPDATE users SET status = ? WHERE id = ? AND company_id = ?', [status, employeeId, companyId]);
@@ -285,5 +285,151 @@ exports.allocateLeadAgent = async (req, res) => {
         res.json({ message: 'Lead successfully routed to designated sales agent.' });
     } catch (error) {
         res.status(500).json({ error: error.message });
+    }
+};
+
+// =======================================================
+// EMPLOYEE API: Fetch Leads Assigned Specifically To Token User
+// =======================================================
+exports.getEmployeeLeads = async (req, res) => {
+    const userId = req.user.id; // From decoded authentication token layer
+    const companyId = req.user.company_id;
+
+    try {
+        const query = `
+            SELECT id, form_name, lead_name, lead_email, lead_phone, custom_fields_json, status, created_at 
+            FROM meta_leads 
+            WHERE company_id = ? AND assigned_to = ?
+            ORDER BY created_at DESC
+        `;
+        const [leads] = await db.query(query, [companyId, userId]);
+        res.json(leads);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// =======================================================
+// EMPLOYEE API: Update Prospecting Pipeline Milestone State
+// =======================================================
+exports.updateLeadStatus = async (req, res) => {
+    const { leadId, status, next_followup_date, last_interaction_notes } = req.body;
+    const userId = req.user.id;
+    const companyId = req.user.company_id;
+
+    try {
+        // 1. Get current data before updating to check if notes or dates actually changed
+        const [currentLead] = await db.query(
+            "SELECT status, next_followup_date, last_interaction_notes FROM meta_leads WHERE id = ? AND company_id = ?",
+            [leadId, companyId]
+        );
+
+        if (currentLead.length === 0) {
+            return res.status(404).json({ error: "Lead target scope not found." });
+        }
+
+        // 2. Build Dynamic Update Statement for main table
+        let updateFields = [];
+        let queryParams = [];
+
+        if (status) { updateFields.push("status = ?"); queryParams.push(status); }
+        if (next_followup_date !== undefined) { updateFields.push("next_followup_date = ?"); queryParams.push(next_followup_date || null); }
+        if (last_interaction_notes !== undefined) { updateFields.push("last_interaction_notes = ?"); queryParams.push(last_interaction_notes || null); }
+
+        if (updateFields.length > 0) {
+            queryParams.push(leadId, companyId, userId);
+            await db.query(
+                `UPDATE meta_leads SET ${updateFields.join(", ")} WHERE id = ? AND company_id = ? AND assigned_to = ?`,
+                queryParams
+            );
+        }
+
+        // 3. If there are new notes or date adjustments, log it into sequence history tracker
+        if (last_interaction_notes && last_interaction_notes !== currentLead[0].last_interaction_notes) {
+
+            const rawIST = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
+            const istTimestamp = new Date(rawIST); // Corrected localized Javascript Object Mapping
+
+            await db.query(
+                "INSERT INTO lead_followup_logs (lead_id, agent_id, notes, followup_date, created_at) VALUES (?, ?, ?, ?, ?)",
+                [leadId, userId, last_interaction_notes, next_followup_date || null, istTimestamp]
+            );
+        }
+
+        return res.json({ message: 'CRM Pipeline metrics and logs synchronized successfully.' });
+    } catch (error) {
+        return res.status(500).json({ error: error.message });
+    }
+};
+
+// ====================================================================
+// FETCH TIMELINE ENDPOINT: Retrieve Sequence Logs for Modal
+// ====================================================================
+exports.getFollowupSequence = async (req, res) => {
+    const { leadId } = req.params;
+    const companyId = req.user.company_id;
+
+    try {
+        const query = `
+            SELECT f.*, u.name as agent_name 
+            FROM lead_followup_logs f
+            JOIN users u ON f.agent_id = u.id
+            JOIN meta_leads l ON f.lead_id = l.id
+            WHERE f.lead_id = ? AND l.company_id = ?
+            ORDER BY f.created_at DESC
+        `;
+        const [logs] = await db.query(query, [leadId, companyId]);
+        res.json(logs);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+
+// =======================================================
+// FETCH LEADS: Role Based Visibility Isolation
+// =======================================================
+exports.getLeadsDashboard = async (req, res) => {
+    const { role, id: userId, company_id: companyId } = req.user;
+
+    try {
+        let query = '';
+        let queryParams = [];
+
+        if (role === 'admin') {
+            query = `
+                SELECT l.*, c.company_name, u.name as assigned_agent_name 
+                FROM meta_leads l
+                JOIN companies c ON l.company_id = c.id
+                LEFT JOIN users u ON l.assigned_to = u.id
+                ORDER BY l.created_at DESC
+            `;
+        }
+        else if (role === 'manager') {
+            query = `
+                SELECT l.*, u.name as assigned_agent_name 
+                FROM meta_leads l
+                LEFT JOIN users u ON l.assigned_to = u.id
+                WHERE l.company_id = ?
+                ORDER BY l.created_at DESC
+            `;
+            queryParams = [companyId];
+        }
+        else if (role === 'employee') {
+            query = `
+                SELECT l.*, '' as assigned_agent_name 
+                FROM meta_leads l
+                WHERE l.company_id = ? AND l.assigned_to = ?
+                ORDER BY l.created_at DESC
+            `;
+            queryParams = [companyId, userId];
+        }
+
+        const [leads] = await db.query(query, queryParams);
+
+        // Ensure standard clean array response even if zero rows found
+        return res.status(200).json(Array.isArray(leads) ? leads : []);
+    } catch (error) {
+        return res.status(500).json({ error: error.message, leads: [] });
     }
 };

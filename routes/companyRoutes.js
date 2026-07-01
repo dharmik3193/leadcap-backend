@@ -17,5 +17,10 @@ router.post('/admin/toggle-company', authenticateToken, requireRoles('admin'), c
 router.post('/manager/toggle-employee', authenticateToken, requireRoles('manager'), companyController.toggleEmployeeStatus);
 router.get('/manager/pipelines', authenticateToken, requireRoles('manager'), companyController.getCompanyPipelines);
 router.post('/manager/allocate-lead', authenticateToken, requireRoles('manager'), companyController.allocateLeadAgent);
+router.get('/employee/my-leads', authenticateToken, requireRoles('employee'), companyController.getEmployeeLeads);
+router.post('/employee/update-lead-status', authenticateToken, requireRoles('employee'), companyController.updateLeadStatus);
+// Base path is tied via: app.use('/api/company', companyRoutes) in server.js
+router.get('/leads-dashboard', authenticateToken, companyController.getLeadsDashboard);
+router.get('/lead-sequence/:leadId', authenticateToken, companyController.getFollowupSequence);
 
 module.exports = router;
