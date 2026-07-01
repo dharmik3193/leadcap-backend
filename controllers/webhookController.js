@@ -46,6 +46,8 @@ exports.receiveMetaLead = async (req, res) => {
                         // 1. Fetch Company's Access Token
                         const [config] = await db.query('SELECT page_access_token FROM meta_configs WHERE company_id = ?', [companyId]);
                         if (config.length === 0) continue;
+                        console.log(config);
+                        
                         const pageAccessToken = config[0].page_access_token;
 
                         // 2. Fetch Form Name from Meta API paraleloneously
@@ -53,6 +55,8 @@ exports.receiveMetaLead = async (req, res) => {
                         try {
                             const formRes = await fetch(`https://graph.facebook.com/v18.0/${formId}?fields=name&access_token=${pageAccessToken}`);
                             const formData = await formRes.json();
+                            console.log(formData);
+                            
                             if (formData.name) formName = formData.name;
                         } catch (e) { console.error("Error fetching Form Name:", e); }
 
@@ -91,6 +95,8 @@ exports.receiveMetaLead = async (req, res) => {
                             ON DUPLICATE KEY UPDATE form_name=VALUES(form_name), custom_fields_json=VALUES(custom_fields_json);
                         `;
                         console.log(formName);
+                        console.log(insertQuery);
+                        
                         
                         await db.query(insertQuery, [
                             companyId, 
