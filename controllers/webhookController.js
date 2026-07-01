@@ -54,7 +54,7 @@ exports.receiveMetaLead = async (req, res) => {
                         let formName = 'Unknown Form';
                         try {
                             // Pro-Tip: Using v20.0 or higher ensures long-term API compliance
-                            const formRes = await fetch(`https://graph.facebook.com/v20.0/${formId}?fields=name&access_token=${pageAccessToken}`);
+                            const formRes = await fetch(`https://graph.facebook.com/v25.0/${formId}?fields=name&access_token=${pageAccessToken}`);
                             const formData = await formRes.json();
 
                             console.log("=> Meta Form API Raw Response:", formData); // Yeh debug log open rakhein!
