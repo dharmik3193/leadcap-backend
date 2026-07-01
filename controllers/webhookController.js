@@ -46,7 +46,7 @@ exports.receiveMetaLead = async (req, res) => {
                         // 1. Fetch Company's Access Token
                         const [config] = await db.query('SELECT page_access_token FROM meta_configs WHERE company_id = ?', [companyId]);
                         if (config.length === 0) continue;
-                        
+
                         const pageAccessToken = config[0].page_access_token;
 
                         // 2. Fetch Form Name from Meta API
@@ -99,18 +99,37 @@ exports.receiveMetaLead = async (req, res) => {
                                 lead_phone = VALUES(lead_phone),
                                 custom_fields_json = VALUES(custom_fields_json)
                         `;
-                        
-                        const [result] = await db.query(insertQuery, [
-                            companyId, 
-                            formName, 
-                            name, 
-                            email, 
-                            phone, 
-                            customFieldsString, 
-                            metaLeadId
-                        ]);
 
-                        console.log(`=> DB Operation Finished. Affected Rows: ${result.affectedRows} | Lead ID: ${metaLeadId}`);
+                        // 1. Get a dedicated connection from the pool to enforce execution
+                        const connection = await db.getConnection();
+
+                        try {
+                            // 2. Begin explicit transaction stream
+                            await connection.beginTransaction();
+
+                            const [result] = await connection.query(insertQuery, [
+                                companyId,
+                                formName,
+                                name,
+                                email,
+                                phone,
+                                customFieldsString,
+                                metaLeadId
+                            ]);
+
+                            // 3. FORCE COMMIT: This pushes the data directly from buffer storage to tables permanently
+                            await connection.commit();
+
+                            console.log(`=> DB Explicitly Committed. Affected Rows: ${result.affectedRows} | Lead ID: ${metaLeadId}`);
+
+                        } catch (dbError) {
+                            // Rollback if something goes out of sync
+                            await connection.rollback();
+                            console.error("Database Transaction Error, rolling back:", dbError.message);
+                        } finally {
+                            // Release the block connection back to pool safely
+                            connection.release();
+                        }
                     }
                 }
             }
