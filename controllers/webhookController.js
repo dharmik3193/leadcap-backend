@@ -50,12 +50,30 @@ exports.receiveMetaLead = async (req, res) => {
                         const pageAccessToken = config[0].page_access_token;
 
                         // 2. Fetch Form Name from Meta API
+
                         let formName = 'Unknown Form';
                         try {
-                            const formRes = await fetch(`https://graph.facebook.com/v18.0/${formId}?fields=name&access_token=${pageAccessToken}`);
+                            // Pro-Tip: Using v20.0 or higher ensures long-term API compliance
+                            const formRes = await fetch(`https://graph.facebook.com/v20.0/${formId}?fields=name&access_token=${pageAccessToken}`);
                             const formData = await formRes.json();
-                            if (formData.name) formName = formData.name;
-                        } catch (e) { console.error("Error fetching Form Name:", e); }
+
+                            console.log("=> Meta Form API Raw Response:", formData); // Yeh debug log open rakhein!
+
+                            if (formData && formData.name) {
+                                formName = formData.name;
+                            } else if (formData && formData.error) {
+                                console.error(`=> Meta Graph API Refused Form Name Access: ${formData.error.message} (Code: ${formData.error.code})`);
+                            }
+                        } catch (e) {
+                            console.error("=> Network/Fetch Error fetching Form Name:", e.bind);
+                        }
+
+                        // let formName = 'Unknown Form';
+                        // try {
+                        //     const formRes = await fetch(`https://graph.facebook.com/v18.0/${formId}?fields=name&access_token=${pageAccessToken}`);
+                        //     const formData = await formRes.json();
+                        //     if (formData.name) formName = formData.name;
+                        // } catch (e) { console.error("Error fetching Form Name:", e); }
 
                         // 3. Fetch Full Lead Details
                         const graphApiUrl = `https://graph.facebook.com/v18.0/${metaLeadId}?access_token=${pageAccessToken}`;
