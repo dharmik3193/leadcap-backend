@@ -16,7 +16,10 @@ exports.getCompaniesList = async (req, res) => {
                 c.created_at,
                 u.name AS manager_name,
                 u.email AS manager_email,
-                mc.pixel_id
+                mc.pixel_id,
+                c.status AS company_status,
+                c.company_logo_url AS company_logo,
+                c.created_at AS onboarded_at
             FROM companies c
             LEFT JOIN users u ON c.id = u.company_id AND u.role = 'manager'
             LEFT JOIN meta_configs mc ON c.id = mc.company_id
