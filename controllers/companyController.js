@@ -24,6 +24,7 @@ exports.getCompaniesList = async (req, res) => {
         `;
 
         const [companies] = await db.query(query);
+        console.log(companies);
         res.json(companies);
     } catch (error) {
         res.status(500).json({ error: error.message });
