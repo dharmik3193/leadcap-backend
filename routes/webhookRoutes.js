@@ -1,9 +1,2 @@
-const express = require('express');
-const router = express.Router();
-const webhookController = require('../controllers/webhookController');
-
-// Client-wise dynamic webhook routing mapping
-router.get('/meta/:companyId', webhookController.verifyWebhook);
-router.post('/meta/:companyId', webhookController.receiveMetaLead);
-
-module.exports = router;
+const express=require("express");const c=require("../controllers/webhookController");const r=express.Router();
+r.get("/meta/:companyId",c.verifyWebhook);r.post("/meta/:companyId",c.receiveMetaLead);module.exports=r;
