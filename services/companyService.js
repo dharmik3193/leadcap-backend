@@ -33,6 +33,147 @@ exports.createEmployee=async({companyId,name,email,password})=>{
   await db.query("INSERT INTO users (company_id,name,email,password_hash,role) VALUES (?,?,?,?, 'employee')",[companyId,name.trim(),email.trim().toLowerCase(),await bcrypt.hash(password,10)]);
   return {message:`Employee '${name}' successfully added.`};
 };
+exports.updateEmployee = async ({
+  employeeId,
+  companyId,
+  name,
+  email,
+  password,
+  status,
+}) => {
+  if (!employeeId) {
+    throw new HttpError(400, "Employee ID is required.");
+  }
+
+  if (!name || !email) {
+    throw new HttpError(400, "Name and email are required.");
+  }
+
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [employees] = await connection.query(
+      `SELECT id, name, email, status
+       FROM users
+       WHERE id=? AND company_id=? AND role='employee'
+       LIMIT 1`,
+      [employeeId, companyId]
+    );
+
+    if (!employees.length) {
+      throw new HttpError(404, "Employee not found.");
+    }
+
+    const normalizedName = name.trim();
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedName || !normalizedEmail) {
+      throw new HttpError(400, "Name and email are required.");
+    }
+
+    // Check whether another employee in the same company
+    // is already using this email.
+    const [existingEmail] = await connection.query(
+      `SELECT id
+       FROM users
+       WHERE email=?
+         AND company_id=?
+         AND id<>?
+       LIMIT 1`,
+      [normalizedEmail, companyId, employeeId]
+    );
+
+    if (existingEmail.length) {
+      throw new HttpError(
+        409,
+        "Another employee is already using this email."
+      );
+    }
+
+    const allowedStatuses = ["active", "suspended"];
+
+    if (status && !allowedStatuses.includes(status)) {
+      throw new HttpError(400, "Invalid employee status.");
+    }
+
+    let query;
+    let params;
+
+    // Password is optional during edit.
+    // If password is empty/not provided, existing password remains unchanged.
+    if (password && password.trim()) {
+      const passwordHash = await bcrypt.hash(password.trim(), 10);
+
+      query = `
+        UPDATE users
+        SET name=?,
+            email=?,
+            password_hash=?,
+            status=COALESCE(?, status)
+        WHERE id=?
+          AND company_id=?
+          AND role='employee'
+      `;
+
+      params = [
+        normalizedName,
+        normalizedEmail,
+        passwordHash,
+        status || null,
+        employeeId,
+        companyId,
+      ];
+    } else {
+      query = `
+        UPDATE users
+        SET name=?,
+            email=?,
+            status=COALESCE(?, status)
+        WHERE id=?
+          AND company_id=?
+          AND role='employee'
+      `;
+
+      params = [
+        normalizedName,
+        normalizedEmail,
+        status || null,
+        employeeId,
+        companyId,
+      ];
+    }
+
+    const [result] = await connection.query(query, params);
+
+    if (!result.affectedRows) {
+      throw new HttpError(404, "Employee not found.");
+    }
+
+    await connection.commit();
+
+    return {
+      message: `Employee '${normalizedName}' updated successfully.`,
+      employee: {
+        id: Number(employeeId),
+        name: normalizedName,
+        email: normalizedEmail,
+        status: status || employees[0].status,
+      },
+    };
+  } catch (error) {
+    await connection.rollback();
+
+    if (error instanceof HttpError) {
+      throw error;
+    }
+
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
 exports.getMetaConfig=async(companyId)=>{
   const [rows]=await db.query("SELECT page_access_token,pixel_id,verify_token FROM meta_configs WHERE company_id=? LIMIT 1",[companyId]);
   if(!rows.length)throw new HttpError(404,"Meta configuration not found for this company.");

@@ -4,6 +4,22 @@ exports.getCompaniesList=async(req,res,next)=>{try{res.json(await companies.getC
 exports.getMetricsSummary=async(req,res,next)=>{try{res.json(await companies.getMetricsSummary());}catch(e){next(e);}};
 exports.createCompany=async(req,res,next)=>{try{res.json(await companies.createCompany(req.body));}catch(e){next(e);}};
 exports.createEmployee=async(req,res,next)=>{try{res.json(await companies.createEmployee({...req.body,companyId:req.user.company_id}));}catch(e){next(e);}};
+exports.updateEmployee = async (req, res, next) => {
+  try {
+    const result = await companies.updateEmployee({
+      employeeId: req.params.employeeId,
+      companyId: req.user.company_id,
+      name: req.body.name,
+      email: req.body.email,
+      password: req.body.password,
+      status: req.body.status,
+    });
+
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+};
 exports.getMetaConfig=async(req,res,next)=>{try{const id=req.user.role==="admin"?req.query.companyId:req.user.company_id;if(!id)return res.status(400).json({message:"Company ID missing"});res.json(await companies.getMetaConfig(id));}catch(e){next(e);}};
 exports.updateMetaConfig=async(req,res,next)=>{try{const id=req.user.role==="admin"?req.body.companyId:req.user.company_id;if(!id)return res.status(400).json({message:"Company ID missing"});res.json(await companies.updateMetaConfig({companyId:id,pageAccessToken:req.body.pageAccessToken,pixelId:req.body.pixelId,verifyToken:req.body.verifyToken}));}catch(e){next(e);}};
 exports.getManagerDashboardData=async(req,res,next)=>{try{res.json(await companies.getManagerEmployees(req.user.company_id));}catch(e){next(e);}};

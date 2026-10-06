@@ -1,6 +1,12 @@
 const express=require("express");const c=require("../controllers/companyController");const {authenticateToken,requireRoles}=require("../middlewares/authMiddleware");const r=express.Router();
 r.post("/create-company",authenticateToken,requireRoles("admin"),c.createCompany);
 r.post("/create-employee",authenticateToken,requireRoles("manager"),c.createEmployee);
+r.put(
+  "/manager/employees/:employeeId",
+  authenticateToken,
+  requireRoles("manager"),
+  c.updateEmployee
+);
 r.get("/companies-list",authenticateToken,requireRoles("admin"),c.getCompaniesList);
 r.get("/metrics-summary",authenticateToken,requireRoles("admin"),c.getMetricsSummary);
 r.get("/meta-config",authenticateToken,requireRoles("admin"),c.getMetaConfig);
