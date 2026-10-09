@@ -29,73 +29,82 @@ exports.getConfig = async (companyId) => {
 
 
 
+
 exports.getLeadForms = async (companyId) => {
   const config = await exports.getConfig(companyId);
 
   if (!config?.page_access_token) {
     const error = new Error(
-      "Meta access token missing in configuration."
+      "Meta access token missing in company configuration."
     );
     error.status = 400;
     throw error;
   }
 
-  const savedToken = config.page_access_token;
+  const token = config.page_access_token;
+  let pages = [];
 
-  // First try treating the saved token as a Page Access Token.
-  let page;
-  let pageToken = savedToken;
-
+  // First, try the saved token as a User Access Token.
   try {
-    const result = await graphRequest(
-      `me?fields=id,name&access_token=${encodeURIComponent(savedToken)}`
-    );
-
-    // Use /me only if it resolves to the configured Facebook Page.
-    // The known Page ID is used only for this forms lookup, not saved to DB.
-    if (result?.id === "679242538609476") {
-      page = result;
-    }
-  } catch (error) {
-    // Continue to the User-token fallback below.
-  }
-
-  // If /me resolved to a person or another node, discover accessible Pages.
-  if (!page) {
     const accounts = await graphRequest(
-      `me/accounts?fields=id,name,access_token&limit=100&access_token=${encodeURIComponent(savedToken)}`
+      `me/accounts?fields=id,name,access_token&limit=100&access_token=${encodeURIComponent(token)}`
     );
 
-    const matchingPage = (accounts.data || []).find(
-      (item) => item.id === "679242538609476"
+    pages = (accounts.data || []).filter(
+      (page) => page.id && page.access_token
     );
-
-    if (!matchingPage?.access_token) {
-      const error = new Error(
-        "Facebook Page not found in /me/accounts, or Page access_token is missing. Check the saved token's Page permissions."
-      );
-      error.status = 400;
-      throw error;
-    }
-
-    page = matchingPage;
-    pageToken = matchingPage.access_token;
+  } catch (error) {
+    // A Page Access Token may not be able to list /me/accounts.
+    // In that case, try resolving /me directly as a Page.
   }
 
-  const formsResponse = await graphRequest(
-    `${page.id}/leadgen_forms?fields=id,name,status&limit=100&access_token=${encodeURIComponent(pageToken)}`
+  // If no managed Pages were returned, try the token as a Page token.
+  if (!pages.length) {
+    const page = await graphRequest(
+      `me?fields=id,name&access_token=${encodeURIComponent(token)}`
+    );
+
+    if (!page?.id) {
+      throw new Error(
+        "Could not identify a Facebook Page using the saved Meta token."
+      );
+    }
+
+    pages = [{
+      id: page.id,
+      name: page.name || "Facebook Page",
+      access_token: token,
+    }];
+  }
+
+  // Fetch forms for every accessible Page using that Page's token.
+  const results = await Promise.all(
+    pages.map(async (page) => {
+      const response = await graphRequest(
+        `${page.id}/leadgen_forms?fields=id,name,status&limit=100&access_token=${encodeURIComponent(page.access_token)}`
+      );
+
+      return (response.data || []).map((form) => ({
+        id: form.id,
+        name: form.name || "Untitled Form",
+        status: form.status || "",
+        pageId: page.id,
+        pageName: page.name || "Facebook Page",
+      }));
+    })
   );
 
+  const forms = results.flat();
+
   return {
-    pageId: page.id,
-    pageName: page.name || "",
-    forms: (formsResponse.data || []).map((form) => ({
-      id: form.id,
-      name: form.name || "Untitled Form",
-      status: form.status || "",
+    forms,
+    pages: pages.map(({ id, name }) => ({
+      id,
+      name: name || "Facebook Page",
     })),
   };
 };
+
 
 
 
