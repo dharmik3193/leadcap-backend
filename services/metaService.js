@@ -26,50 +26,45 @@ exports.getConfig = async (companyId) => {
   return rows[0] || null;
 };
 
+
+
 exports.getLeadForms = async (companyId) => {
   const config = await exports.getConfig(companyId);
 
   if (!config?.page_access_token) {
-    const error = new Error(
-      "Page Access Token missing. Please save Meta configuration first."
-    );
+    const error = new Error("Page Access Token missing in Meta configuration.");
     error.status = 400;
     throw error;
   }
 
   const token = config.page_access_token;
 
-  // A Page Access Token resolves /me to the Facebook Page.
-  // Do NOT call /me/accounts with this token.
+  // Step 1: Identify the Page associated with this Page Access Token
   const page = await graphRequest(
     `me?fields=id,name&access_token=${encodeURIComponent(token)}`
   );
 
   if (!page?.id) {
-    const error = new Error(
-      "Could not resolve Facebook Page from the saved Page Access Token."
-    );
-    error.status = 400;
-    throw error;
+    throw new Error("Could not identify the Facebook Page from the saved token.");
   }
 
-  // Fetch lead forms directly from that Page.
-  const result = await graphRequest(
-    `${encodeURIComponent(page.id)}/leadgen_forms` +
-    `?fields=id,name,status&limit=100` +
-    `&access_token=${encodeURIComponent(token)}`
+  // Step 2: leadgen_forms is an EDGE, not a field on the Page
+  const formsResponse = await graphRequest(
+    `${page.id}/leadgen_forms?fields=id,name,status&limit=100&access_token=${encodeURIComponent(token)}`
   );
 
   return {
     pageId: page.id,
     pageName: page.name || "",
-    forms: (result.data || []).map((form) => ({
+    forms: (formsResponse.data || []).map((form) => ({
       id: form.id,
       name: form.name || "Untitled Form",
       status: form.status || "",
     })),
   };
 };
+
+
 
 exports.getFormName = async (formId, token) => {
   try { const data = await graphRequest(`${formId}?fields=name&access_token=${encodeURIComponent(token)}`); return data.name || "Unknown Form"; }
