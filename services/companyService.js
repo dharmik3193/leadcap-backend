@@ -412,77 +412,68 @@ exports.deleteLeadAssignmentRule = async ({ companyId, formId }) => {
 // server/services/companyService.js
 
 exports.getMetaLeadForms = async (companyId) => {
-  const [rows] = await db.query(
-    `SELECT page_access_token
-     FROM meta_configs
-     WHERE company_id = ?
-     LIMIT 1`,
-    [companyId]
-  );
+  const config = await exports.getMetaConfig(companyId);
 
-  const accessToken = rows[0]?.page_access_token;
+  const accessToken =
+    config?.pageAccessToken || config?.page_access_token;
+
+  const configuredPageId =
+    config?.pageId || config?.page_id;
 
   if (!accessToken) {
-    throw new HttpError(
-      400,
-      "Meta Page Access Token is missing. Configure Meta settings first."
-    );
+    throw new HttpError(400, "Meta access token is missing.");
   }
 
-  const graphVersion = require("../config/env").meta.graphApiVersion;
+  const graphVersion =
+    require("../config/env").meta.graphApiVersion;
 
-  const graphGet = async (path) => {
-    const response = await fetch(
-      `https://graph.facebook.com/${graphVersion}/${path}`
-    );
-
+  const graphGet = async (url) => {
+    const response = await fetch(url);
     const data = await response.json();
 
     if (!response.ok || data.error) {
       throw new HttpError(
         400,
-        data?.error?.message || "Unable to fetch Meta Lead Forms."
+        data?.error?.message || "Meta API request failed."
       );
     }
 
     return data;
   };
 
-  const page = await graphGet(
-    `me?fields=id,name&access_token=${encodeURIComponent(accessToken)}`
-  );
+  let pageId = configuredPageId;
 
-  const forms = [];
-  let nextUrl =
-    `https://graph.facebook.com/${graphVersion}/${page.id}/leadgen_forms` +
-    `?fields=id,name,status&limit=100&access_token=${encodeURIComponent(accessToken)}`;
+  // If no Page ID is configured, find Pages available to this token.
+  if (!pageId) {
+    const pages = await graphGet(
+      `https://graph.facebook.com/${graphVersion}/me/accounts` +
+      `?fields=id,name,access_token&limit=100` +
+      `&access_token=${encodeURIComponent(accessToken)}`
+    );
 
-  while (nextUrl) {
-    const response = await fetch(nextUrl);
-    const data = await response.json();
-
-    if (!response.ok || data.error) {
+    if (!pages.data?.length) {
       throw new HttpError(
         400,
-        data?.error?.message || "Unable to fetch Meta Lead Forms."
+        "No accessible Facebook Pages found. Check token and permissions."
       );
     }
 
-    forms.push(
-      ...(data.data || []).map((form) => ({
-        id: String(form.id),
-        name: form.name || "Untitled Form",
-        status: form.status || "UNKNOWN",
-      }))
-    );
-
-    // Meta provides the next-page URL, including pagination cursor.
-    nextUrl = data.paging?.next || null;
+    // Use the first available Page only as a fallback.
+    pageId = pages.data[0].id;
   }
 
+  const forms = await graphGet(
+    `https://graph.facebook.com/${graphVersion}/${pageId}/leadgen_forms` +
+    `?fields=id,name,status&limit=100` +
+    `&access_token=${encodeURIComponent(accessToken)}`
+  );
+
   return {
-    pageId: String(page.id),
-    pageName: page.name || "Connected Facebook Page",
-    forms,
+    pageId: String(pageId),
+    forms: (forms.data || []).map((form) => ({
+      id: String(form.id),
+      name: form.name || "Untitled Form",
+      status: form.status || "UNKNOWN",
+    })),
   };
 };
