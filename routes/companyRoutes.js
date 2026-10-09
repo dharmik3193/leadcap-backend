@@ -42,11 +42,18 @@ r.delete(
   c.deleteLeadAssignmentRule
 );
 
+// r.get(
+//   "/manager/meta-lead-forms",
+//   authenticateToken,
+//   requireRoles("manager"),
+//   c.getMetaLeadForms
+// );
+
 r.get(
   "/manager/meta-lead-forms",
   authenticateToken,
   requireRoles("manager"),
-  c.getMetaLeadForms
+  c.getManagerMetaLeadForms
 );
 
 module.exports = r;

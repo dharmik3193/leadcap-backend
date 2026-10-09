@@ -1,5 +1,6 @@
 const companies=require("../services/companyService");
 const leads=require("../services/leadService");
+const meta = require("../services/metaService");
 exports.getCompaniesList=async(req,res,next)=>{try{res.json(await companies.getCompaniesList());}catch(e){next(e);}};
 exports.getMetricsSummary=async(req,res,next)=>{try{res.json(await companies.getMetricsSummary());}catch(e){next(e);}};
 exports.createCompany=async(req,res,next)=>{try{res.json(await companies.createCompany(req.body));}catch(e){next(e);}};
@@ -80,6 +81,27 @@ exports.getMetaLeadForms = async (req, res, next) => {
 
     res.json(data);
   } catch (error) {
+    next(error);
+  }
+};
+
+exports.getManagerMetaLeadForms = async (req, res, next) => {
+  try {
+    const companyId = req.user.company_id;
+
+    if (!companyId) {
+      return res.status(400).json({
+        message: "Company ID missing.",
+      });
+    }
+
+    const result = await meta.getLeadForms(companyId);
+    return res.json(result);
+  } catch (error) {
+    console.error(
+      "Manager Meta Forms error:",
+      error.meta?.message || error.message
+    );
     next(error);
   }
 };
