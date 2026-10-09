@@ -28,29 +28,62 @@ exports.getConfig = async (companyId) => {
 
 
 
+
 exports.getLeadForms = async (companyId) => {
   const config = await exports.getConfig(companyId);
 
   if (!config?.page_access_token) {
-    const error = new Error("Page Access Token missing in Meta configuration.");
+    const error = new Error(
+      "Meta access token missing in configuration."
+    );
     error.status = 400;
     throw error;
   }
 
-  const token = config.page_access_token;
+  const savedToken = config.page_access_token;
 
-  // Step 1: Identify the Page associated with this Page Access Token
-  const page = await graphRequest(
-    `me?fields=id,name&access_token=${encodeURIComponent(token)}`
-  );
+  // First try treating the saved token as a Page Access Token.
+  let page;
+  let pageToken = savedToken;
 
-  if (!page?.id) {
-    throw new Error("Could not identify the Facebook Page from the saved token.");
+  try {
+    const result = await graphRequest(
+      `me?fields=id,name&access_token=${encodeURIComponent(savedToken)}`
+    );
+
+    // Use /me only if it resolves to the configured Facebook Page.
+    // The known Page ID is used only for this forms lookup, not saved to DB.
+    if (result?.id === "679242538609476") {
+      page = result;
+    }
+  } catch (error) {
+    // Continue to the User-token fallback below.
   }
 
-  // Step 2: leadgen_forms is an EDGE, not a field on the Page
+  // If /me resolved to a person or another node, discover accessible Pages.
+  if (!page) {
+    const accounts = await graphRequest(
+      `me/accounts?fields=id,name,access_token&limit=100&access_token=${encodeURIComponent(savedToken)}`
+    );
+
+    const matchingPage = (accounts.data || []).find(
+      (item) => item.id === "679242538609476"
+    );
+
+    if (!matchingPage?.access_token) {
+      const error = new Error(
+        "Facebook Page not found in /me/accounts, or Page access_token is missing. Check the saved token's Page permissions."
+      );
+      error.status = 400;
+      throw error;
+    }
+
+    page = matchingPage;
+    pageToken = matchingPage.access_token;
+  }
+
   const formsResponse = await graphRequest(
-    `${page.id}/leadgen_forms?fields=id,name,status&limit=100&access_token=${encodeURIComponent(token)}`
+    `${page.id}/leadgen_forms?fields=id,name,status&limit=100&access_token=${encodeURIComponent(pageToken)}`
   );
 
   return {
@@ -63,6 +96,7 @@ exports.getLeadForms = async (companyId) => {
     })),
   };
 };
+
 
 
 
