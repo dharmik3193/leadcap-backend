@@ -408,3 +408,81 @@ exports.deleteLeadAssignmentRule = async ({ companyId, formId }) => {
     connection.release();
   }
 };
+
+// server/services/companyService.js
+
+exports.getMetaLeadForms = async (companyId) => {
+  const [rows] = await db.query(
+    `SELECT page_access_token
+     FROM meta_configs
+     WHERE company_id = ?
+     LIMIT 1`,
+    [companyId]
+  );
+
+  const accessToken = rows[0]?.page_access_token;
+
+  if (!accessToken) {
+    throw new HttpError(
+      400,
+      "Meta Page Access Token is missing. Configure Meta settings first."
+    );
+  }
+
+  const graphVersion = require("../config/env").meta.graphApiVersion;
+
+  const graphGet = async (path) => {
+    const response = await fetch(
+      `https://graph.facebook.com/${graphVersion}/${path}`
+    );
+
+    const data = await response.json();
+
+    if (!response.ok || data.error) {
+      throw new HttpError(
+        400,
+        data?.error?.message || "Unable to fetch Meta Lead Forms."
+      );
+    }
+
+    return data;
+  };
+
+  const page = await graphGet(
+    `me?fields=id,name&access_token=${encodeURIComponent(accessToken)}`
+  );
+
+  const forms = [];
+  let nextUrl =
+    `https://graph.facebook.com/${graphVersion}/${page.id}/leadgen_forms` +
+    `?fields=id,name,status&limit=100&access_token=${encodeURIComponent(accessToken)}`;
+
+  while (nextUrl) {
+    const response = await fetch(nextUrl);
+    const data = await response.json();
+
+    if (!response.ok || data.error) {
+      throw new HttpError(
+        400,
+        data?.error?.message || "Unable to fetch Meta Lead Forms."
+      );
+    }
+
+    forms.push(
+      ...(data.data || []).map((form) => ({
+        id: String(form.id),
+        name: form.name || "Untitled Form",
+        status: form.status || "UNKNOWN",
+      }))
+    );
+
+    // Meta provides the next-page URL, including pagination cursor.
+    nextUrl = data.paging?.next || null;
+  }
+
+  return {
+    pageId: String(page.id),
+    pageName: page.name || "Connected Facebook Page",
+    forms,
+  };
+};

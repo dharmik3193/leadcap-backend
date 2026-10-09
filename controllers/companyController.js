@@ -71,3 +71,15 @@ exports.deleteLeadAssignmentRule = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.getMetaLeadForms = async (req, res, next) => {
+  try {
+    const data = await companies.getMetaLeadForms(
+      req.user.company_id
+    );
+
+    res.json(data);
+  } catch (error) {
+    next(error);
+  }
+};

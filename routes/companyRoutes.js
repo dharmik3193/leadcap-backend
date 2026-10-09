@@ -41,4 +41,12 @@ r.delete(
   requireRoles("manager"),
   c.deleteLeadAssignmentRule
 );
+
+r.get(
+  "/manager/meta-lead-forms",
+  authenticateToken,
+  requireRoles("manager"),
+  c.getMetaLeadForms
+);
+
 module.exports = r;
