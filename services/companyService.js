@@ -413,7 +413,7 @@ exports.deleteLeadAssignmentRule = async ({ companyId, formId }) => {
 
 exports.getMetaLeadForms = async (companyId) => {
   const config = await exports.getMetaConfig(companyId);
-
+  logging.info(`Retrieved Meta config for company ${companyId}:`, config);
   const accessToken =
     config?.pageAccessToken || config?.page_access_token;
 
