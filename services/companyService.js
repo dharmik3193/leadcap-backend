@@ -413,19 +413,17 @@ exports.deleteLeadAssignmentRule = async ({ companyId, formId }) => {
 
 exports.getMetaLeadForms = async (companyId) => {
   const config = await exports.getMetaConfig(companyId);
-  console.log(`Retrieved Meta config for company ${companyId}:`, config);
-  const accessToken =
-    config?.pageAccessToken || config?.page_access_token;
+  const accessToken = config?.page_access_token;
+  console.log(accessToken, "accessToken");
 
-  const configuredPageId =
-    config?.pageId || config?.page_id;
+  const configuredPageId = config?.pageId || config?.page_id;
+  console.log(configuredPageId, "configuredPageId");
 
   if (!accessToken) {
     throw new HttpError(400, "Meta access token is missing.");
   }
 
-  const graphVersion =
-    require("../config/env").meta.graphApiVersion;
+  const graphVersion = require("../config/env").meta.graphApiVersion;
 
   const graphGet = async (url) => {
     const response = await fetch(url);
