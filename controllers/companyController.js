@@ -32,3 +32,42 @@ exports.getEmployeeLeads=async(req,res,next)=>{try{res.json((await leads.getLead
 exports.updateLeadStatus=async(req,res,next)=>{try{res.json(await leads.updateLeadStatus({leadId:req.body.leadId,userId:req.user.id,companyId:req.user.company_id,role:req.user.role,status:req.body.status,nextFollowupDate:req.body.next_followup_date,notes:req.body.last_interaction_notes}));}catch(e){next(e);}};
 exports.getFollowupSequence=async(req,res,next)=>{try{res.json(await leads.getFollowupSequence(req.params.leadId,req.user));}catch(e){next(e);}};
 exports.getLeadsDashboard=async(req,res,next)=>{try{const r=await leads.getLeads(req.user,req.query);res.json(Object.keys(req.query||{}).length?r:r.data);}catch(e){next(e);}};
+
+exports.getLeadAssignmentRules = async (req, res, next) => {
+  try {
+    const data = await companies.getLeadAssignmentRules(
+      req.user.company_id
+    );
+    res.json(data);
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.saveLeadAssignmentRule = async (req, res, next) => {
+  try {
+    const data = await companies.saveLeadAssignmentRule({
+      companyId: req.user.company_id,
+      formId: req.body.formId,
+      formName: req.body.formName,
+      employeeIds: req.body.employeeIds,
+    });
+
+    res.json(data);
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.deleteLeadAssignmentRule = async (req, res, next) => {
+  try {
+    const data = await companies.deleteLeadAssignmentRule({
+      companyId: req.user.company_id,
+      formId: req.params.formId,
+    });
+
+    res.json(data);
+  } catch (error) {
+    next(error);
+  }
+};
