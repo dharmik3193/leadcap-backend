@@ -418,6 +418,7 @@ exports.getMetaLeadForms = async (companyId) => {
 
   const configuredPageId = config?.pageId || config?.page_id;
   console.log(configuredPageId, "configuredPageId");
+  console.log(config, "configuredPageId");
 
   if (!accessToken) {
     throw new HttpError(400, "Meta access token is missing.");
