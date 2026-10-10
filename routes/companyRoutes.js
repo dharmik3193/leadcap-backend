@@ -42,12 +42,12 @@ r.delete(
   c.deleteLeadAssignmentRule
 );
 
-// r.get(
-//   "/manager/meta-lead-forms",
-//   authenticateToken,
-//   requireRoles("manager"),
-//   c.getMetaLeadForms
-// );
+r.get(
+  "/employee/dashboard",
+  authenticateToken,
+  requireRoles("employee"),
+  c.getEmployeeDashboard
+);
 
 r.get(
   "/manager/meta-lead-forms",

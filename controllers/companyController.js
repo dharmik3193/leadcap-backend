@@ -105,3 +105,16 @@ exports.getManagerMetaLeadForms = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.getEmployeeDashboard = async (req, res, next) => {
+  try {
+    const data = await leads.getEmployeeDashboard({
+      userId: req.user.id,
+      companyId: req.user.company_id,
+    });
+
+    res.json(data);
+  } catch (error) {
+    next(error);
+  }
+};

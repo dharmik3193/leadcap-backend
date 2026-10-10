@@ -192,3 +192,71 @@ exports.getFollowupSequence = async (leadId, user) => {
   const [logs] = await db.query(`SELECT f.*,u.name agent_name FROM lead_followup_logs f JOIN users u ON f.agent_id=u.id WHERE f.lead_id=? ORDER BY f.created_at DESC`, [leadId]);
   return logs;
 };
+
+exports.getEmployeeDashboard = async ({ userId, companyId }) => {
+  const [rows] = await db.query(
+    `SELECT
+      COUNT(*) AS total,
+      SUM(status = 'allocated') AS allocated,
+      SUM(status = 'contacted') AS contacted,
+      SUM(status = 'qualified') AS qualified,
+      SUM(status = 'converted') AS converted,
+      SUM(status = 'lost') AS lost,
+      SUM(
+        next_followup_date IS NOT NULL
+        AND DATE(next_followup_date) = CURDATE()
+      ) AS followupsToday,
+      SUM(
+        next_followup_date IS NOT NULL
+        AND DATE(next_followup_date) < CURDATE()
+        AND status NOT IN ('converted', 'lost')
+      ) AS overdueFollowups
+    FROM meta_leads
+    WHERE company_id = ? AND assigned_to = ?`,
+    [companyId, userId]
+  );
+
+  const stats = rows[0];
+  const total = Number(stats.total || 0);
+  const converted = Number(stats.converted || 0);
+
+  const [recentLeads] = await db.query(
+    `SELECT *
+     FROM meta_leads
+     WHERE company_id = ? AND assigned_to = ?
+     ORDER BY created_at DESC
+     LIMIT 6`,
+    [companyId, userId]
+  );
+
+  const [followups] = await db.query(
+    `SELECT *
+     FROM meta_leads
+     WHERE company_id = ?
+       AND assigned_to = ?
+       AND next_followup_date IS NOT NULL
+       AND DATE(next_followup_date) <= CURDATE()
+       AND status NOT IN ('converted', 'lost')
+     ORDER BY next_followup_date ASC
+     LIMIT 8`,
+    [companyId, userId]
+  );
+
+  return {
+    stats: {
+      total,
+      allocated: Number(stats.allocated || 0),
+      contacted: Number(stats.contacted || 0),
+      qualified: Number(stats.qualified || 0),
+      converted,
+      lost: Number(stats.lost || 0),
+      followupsToday: Number(stats.followupsToday || 0),
+      overdueFollowups: Number(stats.overdueFollowups || 0),
+      conversionRate: total
+        ? Math.round((converted / total) * 100)
+        : 0,
+    },
+    recentLeads,
+    followups,
+  };
+};
