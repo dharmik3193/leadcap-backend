@@ -11,7 +11,12 @@ r.get("/companies-list", authenticateToken, requireRoles("admin"), c.getCompanie
 r.get("/metrics-summary", authenticateToken, requireRoles("admin"), c.getMetricsSummary);
 r.get("/meta-config", authenticateToken, requireRoles("admin"), c.getMetaConfig);
 r.post("/meta-config", authenticateToken, requireRoles("admin"), c.updateMetaConfig);
-r.get("/manager/employees-list", authenticateToken, requireRoles("manager,admin"), c.getManagerDashboardData);
+r.get(
+  "/manager/employees-list",
+  authenticateToken,
+  requireRoles("admin", "manager"),
+  c.getManagerDashboardData
+);
 r.post("/admin/toggle-company", authenticateToken, requireRoles("admin"), c.toggleCompanyStatus);
 r.post("/manager/toggle-employee", authenticateToken, requireRoles("manager"), c.toggleEmployeeStatus);
 r.delete("/manager/employees/:employeeId", authenticateToken, requireRoles("manager"), c.deleteEmployee);
