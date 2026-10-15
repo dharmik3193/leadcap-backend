@@ -174,17 +174,60 @@ exports.updateEmployee = async ({
     connection.release();
   }
 };
+
 exports.getMetaConfig = async (companyId) => {
-  const [rows] = await db.query("SELECT page_access_token,pixel_id,verify_token FROM meta_configs WHERE company_id=? LIMIT 1", [companyId]);
-  if (!rows.length) throw new HttpError(404, "Meta configuration not found for this company.");
+  const [rows] = await db.query(
+    `SELECT
+      page_access_token,
+      ad_account_id,
+      pixel_id,
+      verify_token
+     FROM meta_configs
+     WHERE company_id = ?
+     LIMIT 1`,
+    [companyId]
+  );
+
+  if (!rows.length) {
+    throw new HttpError(
+      404,
+      "Meta configuration not found for this company."
+    );
+  }
+
   return rows[0];
 };
-exports.updateMetaConfig = async ({ companyId, pageAccessToken, pixelId, verifyToken }) => {
-  await db.query(`INSERT INTO meta_configs (company_id,page_access_token,pixel_id,verify_token) VALUES (?,?,?,?)
-    ON DUPLICATE KEY UPDATE page_access_token=VALUES(page_access_token),pixel_id=VALUES(pixel_id),verify_token=VALUES(verify_token)`,
-    [companyId, pageAccessToken, pixelId, verifyToken]);
-  return { message: "Meta configurations successfully updated!" };
+
+exports.updateMetaConfig = async ({
+  companyId,
+  pageAccessToken,
+  adAccountId,
+  pixelId,
+  verifyToken,
+}) => {
+  await db.query(
+    `INSERT INTO meta_configs
+      (company_id, page_access_token, ad_account_id, pixel_id, verify_token)
+     VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+      page_access_token = COALESCE(VALUES(page_access_token), page_access_token),
+      ad_account_id = COALESCE(VALUES(ad_account_id), ad_account_id),
+      pixel_id = COALESCE(VALUES(pixel_id), pixel_id),
+      verify_token = COALESCE(VALUES(verify_token), verify_token)`,
+    [
+      companyId,
+      pageAccessToken || null,
+      adAccountId || null,
+      pixelId || null,
+      verifyToken || null,
+    ]
+  );
+
+  return {
+    message: "Meta configurations successfully updated!",
+  };
 };
+
 exports.getManagerEmployees = async (companyId) => {
   const [[employees], [leadCount]] = await Promise.all([
     db.query("SELECT id,name,email,role,status,created_at FROM users WHERE company_id=? AND role='employee' ORDER BY created_at DESC", [companyId]),

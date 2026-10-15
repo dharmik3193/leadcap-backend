@@ -22,7 +22,33 @@ exports.updateEmployee = async (req, res, next) => {
   }
 };
 exports.getMetaConfig=async(req,res,next)=>{try{const id=req.user.role==="admin"?req.query.companyId:req.user.company_id;if(!id)return res.status(400).json({message:"Company ID missing"});res.json(await companies.getMetaConfig(id));}catch(e){next(e);}};
-exports.updateMetaConfig=async(req,res,next)=>{try{const id=req.user.role==="admin"?req.body.companyId:req.user.company_id;if(!id)return res.status(400).json({message:"Company ID missing"});res.json(await companies.updateMetaConfig({companyId:id,pageAccessToken:req.body.pageAccessToken,pixelId:req.body.pixelId,verifyToken:req.body.verifyToken}));}catch(e){next(e);}};
+
+exports.updateMetaConfig = async (req, res, next) => {
+  try {
+    const id =
+      req.user.role === "admin"
+        ? req.body.companyId
+        : req.user.company_id;
+
+    if (!id) {
+      return res.status(400).json({
+        message: "Company ID missing",
+      });
+    }
+
+    const result = await companies.updateMetaConfig({
+      companyId: id,
+      pageAccessToken: req.body.pageAccessToken,
+      adAccountId: req.body.adAccountId,
+      pixelId: req.body.pixelId,
+      verifyToken: req.body.verifyToken,
+    });
+
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+};
 exports.getManagerDashboardData=async(req,res,next)=>{try{res.json(await companies.getManagerEmployees(req.user.company_id));}catch(e){next(e);}};
 exports.toggleCompanyStatus=async(req,res,next)=>{try{res.json(await companies.toggleCompanyStatus(req.body));}catch(e){next(e);}};
 exports.toggleEmployeeStatus=async(req,res,next)=>{try{res.json(await companies.toggleEmployeeStatus({...req.body,companyId:req.user.company_id}));}catch(e){next(e);}};
