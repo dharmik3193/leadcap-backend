@@ -3,8 +3,30 @@ const db = require("../config/db");
 const HttpError = require("../utils/httpError");
 
 exports.getCompaniesList = async () => {
-  const [rows] = await db.query(`SELECT c.id,c.company_name,c.created_at,u.name manager_name,u.email manager_email,mc.pixel_id,mc.page_access_token,mc.verify_token,c.status company_status,c.company_logo_url company_logo,c.created_at onboarded_at
-    FROM companies c LEFT JOIN users u ON c.id=u.company_id AND u.role='manager' LEFT JOIN meta_configs mc ON c.id=mc.company_id ORDER BY c.created_at DESC`);
+
+  const [rows] = await db.query(`
+  SELECT
+    c.id,
+    c.company_name,
+    c.created_at,
+    u.name AS manager_name,
+    u.email AS manager_email,
+    mc.pixel_id,
+    mc.page_access_token,
+    mc.ad_account_id,
+    mc.verify_token,
+    c.status AS company_status,
+    c.company_logo_url AS company_logo,
+    c.created_at AS onboarded_at
+  FROM companies c
+  LEFT JOIN users u
+    ON c.id = u.company_id
+    AND u.role = 'manager'
+  LEFT JOIN meta_configs mc
+    ON c.id = mc.company_id
+  ORDER BY c.created_at DESC
+`);
+
   return rows;
 };
 exports.getMetricsSummary = async () => {
