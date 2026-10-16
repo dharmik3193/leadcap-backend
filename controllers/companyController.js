@@ -144,3 +144,29 @@ exports.getEmployeeDashboard = async (req, res, next) => {
     next(error);
   }
 };
+
+
+
+exports.getManagerAdPerformance = async (req, res, next) => {
+  try {
+    const companyId = req.user.company_id;
+
+    if (!companyId) {
+      return res.status(400).json({
+        message: "Company ID missing.",
+      });
+    }
+
+    const { since, until } = req.query;
+
+    const result = await meta.getAdPerformance({
+      companyId,
+      since,
+      until,
+    });
+
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};

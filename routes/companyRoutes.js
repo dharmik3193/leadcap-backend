@@ -61,4 +61,11 @@ r.get(
   c.getManagerMetaLeadForms
 );
 
+r.get(
+  "/manager/ad-performance",
+  authenticateToken,
+  requireRoles("manager"),
+  c.getManagerAdPerformance
+);
+
 module.exports = r;

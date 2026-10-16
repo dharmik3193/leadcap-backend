@@ -22,7 +22,19 @@ const graphRequest = async (path, options = {}) => {
 };
 
 exports.getConfig = async (companyId) => {
-  const [rows] = await db.query(`SELECT company_id,page_access_token,pixel_id,verify_token FROM meta_configs WHERE company_id=? LIMIT 1`, [companyId]);
+  const [rows] = await db.query(
+    `SELECT
+      company_id,
+      page_access_token,
+      ad_account_id,
+      pixel_id,
+      verify_token
+     FROM meta_configs
+     WHERE company_id = ?
+     LIMIT 1`,
+    [companyId]
+  );
+
   return rows[0] || null;
 };
 
@@ -143,4 +155,166 @@ exports.sendLeadStageEvent = async ({ lead, companyId, newStatus, stageChangedAt
   };
   const response = await graphRequest(`${config.pixel_id}/events?access_token=${encodeURIComponent(config.page_access_token)}`, { method: "POST", body: JSON.stringify(payload) });
   return { sent: true, skipped: false, eventId, eventName, response };
+};
+
+
+
+exports.getAdPerformance = async ({
+  companyId,
+  since,
+  until,
+}) => {
+  const validDate = (value) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) {
+      return false;
+    }
+
+    const date = new Date(`${value}T00:00:00Z`);
+
+    return (
+      !Number.isNaN(date.getTime()) &&
+      date.toISOString().slice(0, 10) === value
+    );
+  };
+
+  if (!validDate(since) || !validDate(until) || since > until) {
+    const error = new Error(
+      "Valid since and until dates are required (YYYY-MM-DD)."
+    );
+    error.status = 400;
+    throw error;
+  }
+
+  const config = await exports.getConfig(companyId);
+
+  if (!config?.page_access_token || !config?.ad_account_id) {
+    const error = new Error(
+      "Meta access token or Ad Account ID is missing in company configuration."
+    );
+    error.status = 400;
+    throw error;
+  }
+
+  const rawAccountId = String(config.ad_account_id).trim();
+  const accountId = rawAccountId.startsWith("act_")
+    ? rawAccountId
+    : `act_${rawAccountId}`;
+
+  const token = config.page_access_token;
+
+  const fetchInsights = async ({ level, timeIncrement }) => {
+    const params = new URLSearchParams({
+      access_token: token,
+      level,
+      time_increment: String(timeIncrement),
+      limit: "500",
+      fields: [
+        "account_currency",
+        "campaign_id",
+        "campaign_name",
+        "date_start",
+        "date_stop",
+        "spend",
+        "impressions",
+        "reach",
+        "clicks",
+        "inline_link_clicks",
+        "ctr",
+        "cpc",
+        "cpm",
+        "actions",
+        "cost_per_action_type",
+      ].join(","),
+      time_range: JSON.stringify({ since, until }),
+    });
+
+    const result = await graphRequest(
+      `${accountId}/insights?${params.toString()}`
+    );
+
+    return result.data || [];
+  };
+
+  const [dailyRows, campaignRows] = await Promise.all([
+    fetchInsights({ level: "account", timeIncrement: 1 }),
+    fetchInsights({ level: "campaign", timeIncrement: "all_days" }),
+  ]);
+
+  const daily = dailyRows.map((row) => {
+    const spend = Number(row.spend || 0);
+    const leads = (row.actions || [])
+      .filter((action) =>
+        ["lead", "onsite_conversion.lead_grouped"].includes(
+          action.action_type
+        )
+      )
+      .reduce((total, action) => total + Number(action.value || 0), 0);
+
+    return {
+      date: row.date_start,
+      spend,
+      impressions: Number(row.impressions || 0),
+      reach: Number(row.reach || 0),
+      clicks: Number(row.clicks || 0),
+      linkClicks: Number(row.inline_link_clicks || 0),
+      leads,
+      costPerLead: leads > 0 ? spend / leads : null,
+      currency: row.account_currency || null,
+    };
+  });
+
+  const campaigns = campaignRows.map((row) => {
+    const spend = Number(row.spend || 0);
+    const leads = (row.actions || [])
+      .filter((action) =>
+        ["lead", "onsite_conversion.lead_grouped"].includes(
+          action.action_type
+        )
+      )
+      .reduce((total, action) => total + Number(action.value || 0), 0);
+
+    return {
+      campaignId: row.campaign_id,
+      campaignName: row.campaign_name || "Unnamed campaign",
+      spend,
+      impressions: Number(row.impressions || 0),
+      reach: Number(row.reach || 0),
+      clicks: Number(row.clicks || 0),
+      leads,
+      costPerLead: leads > 0 ? spend / leads : null,
+      currency: row.account_currency || null,
+    };
+  });
+
+  const totals = daily.reduce(
+    (result, row) => ({
+      spend: result.spend + row.spend,
+      impressions: result.impressions + row.impressions,
+      reach: result.reach + row.reach,
+      clicks: result.clicks + row.clicks,
+      linkClicks: result.linkClicks + row.linkClicks,
+      leads: result.leads + row.leads,
+    }),
+    {
+      spend: 0,
+      impressions: 0,
+      reach: 0,
+      clicks: 0,
+      linkClicks: 0,
+      leads: 0,
+    }
+  );
+
+  return {
+    companyId: Number(companyId),
+    dateRange: { since, until },
+    currency: daily.find((row) => row.currency)?.currency || null,
+    totals: {
+      ...totals,
+      costPerLead:
+        totals.leads > 0 ? totals.spend / totals.leads : null,
+    },
+    daily,
+    campaigns,
+  };
 };
