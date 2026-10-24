@@ -29,7 +29,7 @@ exports.receiveMetaLead = async (req, res) => {
         const value = field.values?.[0] || "";
         if (field.name === "full_name" || field.name === "name") name = value;
         else if (field.name === "email") email = value;
-        else if (field.name === "phone_number" || field.name === "phone") phone = value;
+        else if (field.name === "phone_number" || field.name === "phone" || field.name === "whatsapp_number") phone = value;
         else custom[field.name] = value;
       }
       const [insertResult] = await db.query(
